@@ -2,6 +2,8 @@ const jwt = require('jsonwebtoken')
 const config = require('../config')
 const bcrypt = require('bcrypt')
 const userModel = require('../models/users.model')
+const { v4: uuidv4 } = require("uuid");
+const { sendVerificationEmail } = require("../utils/mailer");
 const {successHandler, errorHandler} = require('../utils/helper.responses')
 
 const getAllUsers = async (req, res) => {
@@ -34,42 +36,47 @@ const getAllUsers = async (req, res) => {
 }
 
 const createUser = async (req, res) => {
-    try {
-        const { firstName, lastName, email, password } = req.body
+  try {
+    const { firstName, lastName, email, password } = req.body;
 
-        // Validasi input
-        if (!firstName || !lastName || !email || !password) {
-            return errorHandler(res, false, 400, "Semua field wajib diisi")
-        }
-
-        // Enkripsi password
-        const saltRounds = 10
-        const hashedPassword = await bcrypt.hash(password, saltRounds)
-
-        // Simpan ke database
-        const createdUser = await userModel.createUser(firstName, lastName, email, hashedPassword)
-
-        if (!createdUser.affectedRows) {
-            return errorHandler(res, false, 400, "Gagal membuat user")
-        }
-
-        return successHandler(
-            res,
-            true,
-            201,
-            "User berhasil dibuat",
-            { firstName, lastName, email }
-        )
-
-    } catch (error) {
-        return errorHandler(
-            res,
-            false,
-            500,
-            `Internal Server Error: ${error.message}`
-        )
+    if (!firstName || !lastName || !email || !password) {
+      return errorHandler(res, false, 400, "Semua field wajib diisi");
     }
-}
+
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    // Generate token verifikasi unik
+    const verificationToken = uuidv4();
+
+    // Simpan ke database dengan token
+    const createdUser = await userModel.createUser(
+      firstName,
+      lastName,
+      email,
+      hashedPassword,
+      verificationToken
+    );
+
+    if (!createdUser.affectedRows) {
+      return errorHandler(res, false, 400, "Gagal membuat user");
+    }
+
+    // Kirim email verifikasi
+    await sendVerificationEmail(email, verificationToken);
+
+    return successHandler(
+      res,
+      true,
+      201,
+      "User berhasil dibuat. Silakan cek email untuk verifikasi akun.",
+      { firstName, lastName, email }
+    );
+
+  } catch (error) {
+    return errorHandler(res, false, 500, `Internal Server Error: ${error.message}`);
+  }
+};
 
 const updateUser = async (req, res) => {
     try {
@@ -182,35 +189,45 @@ const getUserById = async (req, res) => {
 
 const loginUser = async (req, res) => {
     try {
-        const { email, password } = req.body
+        const { email, password } = req.body;
 
         // Validasi input
         if (!email || !password) {
-            return errorHandler(res, false, 400, "Email dan password wajib diisi")
+            return errorHandler(res, false, 400, "Email dan password wajib diisi");
         }
 
         // Cek apakah user dengan email tsb ada
-        const user = await userModel.getUserByEmail(email)
+        const user = await userModel.getUserByEmail(email);
 
         if (!user || user.length === 0) {
-            return errorHandler(res, false, 401, "Email atau password salah")
+            return errorHandler(res, false, 401, "Email atau password salah");
         }
 
-        const foundUser = user[0]
+        const foundUser = user[0];
+
+        // 🔹 Cek apakah email sudah diverifikasi
+        if (!foundUser.is_verified) {
+            return errorHandler(
+                res,
+                false,
+                403,
+                "Akun belum diverifikasi. Silakan cek email Anda untuk verifikasi."
+            );
+        }
 
         // Bandingkan password yang dikirim dengan hash di database
-        const isMatch = await bcrypt.compare(password, foundUser.password)
+        const isMatch = await bcrypt.compare(password, foundUser.password);
 
         if (!isMatch) {
-            return errorHandler(res, false, 401, "Email atau password salah")
+            return errorHandler(res, false, 401, "Email atau password salah");
         }
 
         // Buat token JWT
         const token = jwt.sign(
             { userId: foundUser.user_id, email: foundUser.email },
             process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
-        )
+            { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
+        );
 
         // Kirim respons sukses
         return successHandler(
@@ -227,12 +244,39 @@ const loginUser = async (req, res) => {
                     email: foundUser.email
                 }
             }
-        )
+        );
 
     } catch (error) {
-        return errorHandler(res, false, 500, `Internal Server Error: ${error.message}`)
+        return errorHandler(res, false, 500, `Internal Server Error: ${error.message}`);
     }
-}
+};
+
+
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return errorHandler(res, false, 400, "Verification token diperlukan");
+    }
+
+    // Cari user berdasarkan token
+    const user = await userModel.getUserByVerificationToken(token);
+
+    if (!user || user.length === 0) {
+      return errorHandler(res, false, 400, "Invalid Verification Token");
+    }
+
+    // Update status is_verified
+    await userModel.verifyUserEmail(token);
+
+    return successHandler(res, true, 200, "Email Verified Successfully");
+
+  } catch (error) {
+    return errorHandler(res, false, 500, `Internal Server Error: ${error.message}`);
+  }
+};
+
 
 module.exports = {
     getAllUsers,
@@ -240,6 +284,7 @@ module.exports = {
     updateUser,
     deleteUser,
     getUserById,
-    loginUser
+    loginUser,
+    verifyEmail
 
 }

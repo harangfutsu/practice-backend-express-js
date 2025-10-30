@@ -7,6 +7,7 @@ router.put('/users/:userId', UserControllers.updateUser)
 router.delete('/users/:userId', UserControllers.deleteUser)
 router.get('/users/:userId', UserControllers.getUserById)
 router.post('/login', UserControllers.loginUser)
+router.get('/verify-email', UserControllers.verifyEmail);
 
 
 module.exports = router;

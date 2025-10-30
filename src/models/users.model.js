@@ -12,18 +12,18 @@ const getAllUsers = () =>
         })
 })
 
-const createUser = (firstName, lastName, email, password) => 
-    new Promise((resolve, reject) => {
-        const sql = 'INSERT INTO users (user_id, firstname, lastname, email, password) VALUES (?,?,?,?,?)'
-        const values = [crypto.randomUUID(), firstName, lastName, email, password]
-        connection.query(sql, values, (err, results) => {
-            if (err) {
-                return reject(err)
-            }
-            console.log('create results: ', results)
-            resolve(results)
-        })
-})
+const createUser = (firstName, lastName, email, password, verificationToken) =>
+  new Promise((resolve, reject) => {
+    const sql = `
+      INSERT INTO users (user_id, firstname, lastname, email, password, verification_token, is_verified)
+      VALUES (?, ?, ?, ?, ?, ?, false)
+    `;
+    const values = [crypto.randomUUID(), firstName, lastName, email, password, verificationToken];
+    connection.query(sql, values, (err, results) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
 
 const updateUser = (userId, firstName, lastName, email, password) => 
     new Promise((resolve, reject) => {
@@ -75,6 +75,29 @@ const getUserByEmail = (email) =>
         })
     })
 
+const getUserByVerificationToken = (token) =>
+  new Promise((resolve, reject) => {
+    const sql = 'SELECT * FROM users WHERE verification_token = ?';
+    connection.query(sql, [token], (err, results) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
+
+const verifyUserEmail = (token) =>
+  new Promise((resolve, reject) => {
+    const sql = `
+      UPDATE users 
+      SET is_verified = true, verification_token = NULL
+      WHERE verification_token = ?
+    `;
+    connection.query(sql, [token], (err, results) => {
+      if (err) return reject(err);
+      resolve(results);
+    });
+  });
+
+
 
 module.exports = {
     getAllUsers,
@@ -82,5 +105,7 @@ module.exports = {
     updateUser,
     deleteUser,
     getUserById,
-    getUserByEmail
+    getUserByEmail,
+    getUserByVerificationToken,
+    verifyUserEmail
 }
