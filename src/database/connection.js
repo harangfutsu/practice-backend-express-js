@@ -1,18 +1,18 @@
-const mysql = require('mysql2')
+// database/connection.js
+const { Pool } = require('pg')
 const config = require('../config')
-const connection = mysql.createConnection({
-user: config.db.user,
-password: config.db.password,
-database: config.db.database,
-host: config.db.host,
-port: config.db.port
+
+const pool = new Pool({
+    user: config.db.user,
+    password: config.db.password,
+    host: config.db.host,
+    database: config.db.database,
+    port: config.db.port,
+    ssl: { rejectUnauthorized: false } // Supabase membutuhkan SSL
 })
-connection.connect((err) => {
-if (err) {
-console.error('Database connection failed', err)
-}
-else {
-console.log('Connected to Database')
-}
-})
-module.exports = connection
+
+pool.connect()
+    .then(() => console.log("Connected to Supabase PostgreSQL"))
+    .catch(err => console.error("Database connection failed", err))
+
+module.exports = pool
