@@ -8,8 +8,10 @@ const pool = new Pool({
     host: config.db.host,
     database: config.db.database,
     port: config.db.port,
-    ssl: { rejectUnauthorized: false } // Supabase membutuhkan SSL
-})
+    ssl: { rejectUnauthorized: false },
+    max: 5 // penting untuk Supabase!
+});
+
 
 pool.connect()
     .then(() => console.log("Connected to Supabase PostgreSQL"))
